@@ -2,3 +2,21 @@ fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
+# Database (M0/M1)
+sqlalchemy[asyncio]==2.1.1
+asyncpg==0.31.0
+alembic==1.20.0
+# LLM (M2: Planner Agent, OpenAI gpt-4o-mini)
+openai==3.22.1
+# Browser thật (M4: Browser Executor Agent). Cài xong còn phải chạy:
+#   python -m playwright install chromium
+# playwright 1.49.1 đòi greenlet==3.1.1 (không build được trên Python mới) → cài --no-deps,
+# dự án đã có greenlet mới hơn qua SQLAlchemy async nên không cần bản cũ đó.
+playwright==1.49.1
+pyee==12.0.0
+# So ảnh chụp giữa 2 lần chạy (M6: Visual Diff khi Re-run)
+pillow==12.3.0
+# Băm mật khẩu Argon2id (M7: đăng nhập)
+argon2-cffi==25.1.0
+# Test Connection cho environments (M8). Đã có sẵn qua fastapi[testclient]; khai báo trực tiếp vì code gọi thẳng.
+httpx==0.28.1
