@@ -14,6 +14,7 @@ os.environ["ARTIFACTS_DIR"] = str(  # file evidence của test không lẫn vớ
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://localhost/ai_agent_tester_test"
 )
+os.environ["SECRETS_KEY"] = "w_bFQYcz4ucW5KuNmvWD0XJCpDUHIhqSSWPdAZEZQd4="  # test thôi, không dùng để mã hoá dữ liệu thật
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

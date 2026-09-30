@@ -27,10 +27,12 @@ import {
   getMe,
   logout,
   setUnauthorizedHandler,
+  getPreferences,
+  updatePreferences,
 } from './api';
 
 // Dashboard Workspace — navigation + state shared across modules (execution, runs, selected run)
-const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme }) => {
+const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme, onThemeChange }) => {
   const [activeModule, setActiveModule] = React.useState('dashboard');
   const [promptText, setPromptText] = React.useState('Test the password reset feature on test.com');
 
@@ -503,7 +505,7 @@ const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme }) => {
 
         {activeModule === 'environments' && <EnvironmentsPage isLight={isLight} />}
 
-        {activeModule === 'settings' && <SettingsPage isLight={isLight} user={user} />}
+        {activeModule === 'settings' && <SettingsPage isLight={isLight} user={user} theme={theme} onThemeChange={onThemeChange} />}
 
         {activeModule === 'reports' && <ReportsPage isLight={isLight} recentRuns={recentRuns} />}
 
@@ -544,7 +546,11 @@ export const App = () => {
   // Mở trang / reload: còn phiên (cookie HttpOnly) thì vào thẳng Dashboard
   React.useEffect(() => {
     getMe()
-      .then(u => setCurrentUser(toUiUser(u)))
+      .then(u => {
+        setCurrentUser(toUiUser(u));
+        // Theme đã lưu (M9): áp dụng ngay khi biết còn phiên đăng nhập.
+        getPreferences().then(p => setTheme(p.theme)).catch(() => {});
+      })
       .catch(() => setCurrentUser(null))
       .finally(() => setIsCheckingSession(false));
   }, []);
@@ -565,11 +571,13 @@ export const App = () => {
     document.body.classList.toggle('theme-light', theme === 'light');
   }, [theme]);
 
+  const handleSetTheme = (next) => {
+    setTheme(next);
+    if (currentUser) updatePreferences({ theme: next }).catch(() => {});
+  };
+
   const handleToggleTheme = () => {
-    setTheme(prev => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      return next;
-    });
+    handleSetTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
   const handleOpenAuth = (mode = 'signin') => {
@@ -600,6 +608,7 @@ export const App = () => {
         onLogout={handleLogout}
         theme={theme}
         onToggleTheme={handleToggleTheme}
+        onThemeChange={handleSetTheme}
       />
     );
   }

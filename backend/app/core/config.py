@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     # target thật sự là máy local (demo), KHÔNG bật ở production.
     allow_private_targets: bool = False
 
+    # M9 — mã hoá API key của user trước khi lưu DB (Fernet, `core.security.encrypt_secret`).
+    # Sinh 1 lần: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    secrets_key: SecretStr | None = None
+
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 
     @property

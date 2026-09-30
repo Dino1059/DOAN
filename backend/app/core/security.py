@@ -8,6 +8,10 @@ import secrets
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from cryptography.fernet import Fernet, InvalidToken
+
+from app.core.config import settings
+from app.core.exceptions import ServiceUnavailable
 
 _hasher = PasswordHasher()  # argon2id, tham số mặc định của thư viện (64 MiB, t=3)
 # Băm sẵn 1 mật khẩu giả: login với tài khoản không tồn tại vẫn tốn đúng thời gian như sai mật khẩu,
@@ -38,3 +42,22 @@ def new_session_token() -> tuple[str, str]:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _fernet() -> Fernet:
+    if not settings.secrets_key:
+        raise ServiceUnavailable("SECRETS_KEY is not configured in backend/.env", code="SECRETS_KEY_MISSING")
+    return Fernet(settings.secrets_key.get_secret_value())
+
+
+def encrypt_secret(plain: str) -> str:
+    """API key của user (M9) — không bao giờ lưu nguyên văn."""
+    return _fernet().encrypt(plain.encode()).decode()
+
+
+def decrypt_secret(token: str) -> str:
+    try:
+        return _fernet().decrypt(token.encode()).decode()
+    except InvalidToken:
+        # SECRETS_KEY đổi sau khi đã lưu key cũ, hoặc dữ liệu hỏng: coi như chưa cấu hình, không 500.
+        raise ServiceUnavailable("Stored API key could not be decrypted", code="SECRETS_KEY_MISMATCH") from None

@@ -20,3 +20,5 @@ pillow==12.3.0
 argon2-cffi==25.1.0
 # Test Connection cho environments (M8). Đã có sẵn qua fastapi[testclient]; khai báo trực tiếp vì code gọi thẳng.
 httpx==0.28.1
+# Mã hoá API key của user trước khi lưu DB (M9, Fernet)
+cryptography==50.0.2

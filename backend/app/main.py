@@ -17,6 +17,7 @@ from app.modules.execution.router import run_launcher
 from app.modules.feedback.router import router as feedback_router
 from app.modules.test_planning.router import router as test_planning_router
 from app.modules.test_runs.router import router as test_runs_router
+from app.modules.user_settings.router import router as user_settings_router
 
 log = logging.getLogger(__name__)
 
@@ -55,3 +56,4 @@ app.include_router(execution_router)
 app.include_router(evidence_router)
 app.include_router(feedback_router)
 app.include_router(environments_router)
+app.include_router(user_settings_router)

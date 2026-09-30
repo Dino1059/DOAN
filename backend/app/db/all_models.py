@@ -14,5 +14,6 @@ from app.modules.test_planning.models import (  # noqa: F401
     TestPlan,
     TestPlanStep,
 )
+from app.modules.user_settings.models import ApiKey, UserPreferences  # noqa: F401
 
 __all__ = ["Base"]

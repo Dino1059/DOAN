@@ -187,6 +187,26 @@ export const deleteEnvironment = (id) => apiFetch(`/environments/${id}`, { metho
 export const testEnvironmentConnection = (id) =>
   sendJson('POST', `/environments/${id}/test-connection`, {}).then(body => body.data);
 
+// ---------- Settings (M9) ----------
+
+export const getProfile = () => apiFetch('/settings/profile').then(jsonOrThrow).then(body => body.data);
+
+export const updateProfile = (patch) => sendJson('PUT', '/settings/profile', patch).then(body => body.data);
+
+export const changePassword = (currentPassword, newPassword) =>
+  sendJson('PUT', '/settings/password', { current_password: currentPassword, new_password: newPassword });
+
+export const listApiKeys = () => apiFetch('/settings/api-keys').then(jsonOrThrow).then(body => body.data);
+
+export const setApiKey = (provider, apiKey) =>
+  sendJson('PUT', `/settings/api-keys/${provider}`, { api_key: apiKey }).then(body => body.data);
+
+export const deleteApiKey = (provider) => apiFetch(`/settings/api-keys/${provider}`, { method: 'DELETE' }).then(jsonOrThrow);
+
+export const getPreferences = () => apiFetch('/settings/preferences').then(jsonOrThrow).then(body => body.data);
+
+export const updatePreferences = (patch) => sendJson('PUT', '/settings/preferences', patch).then(body => body.data);
+
 export const submitFeedback = ({ rating, category, message, username }) =>
   postJson('/feedback', { rating, category, message, username })
     .then(async response => {

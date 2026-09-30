@@ -241,5 +241,25 @@ Module: `backend/app/modules/environments/`. Mọi endpoint yêu cầu đăng nh
 ### Ảnh hưởng tới run (M3)
 `POST /tasks/run` nhận thêm `environment_id`. Run chép `environment_name` và `browser` (bản chụp) lúc tạo; xoá/sửa environment sau đó không đổi lịch sử run cũ. Playwright (M4) cũng chặn điều hướng/redirect sang IP nội bộ bằng cùng `url_guard`.
 
+## Settings (M9 — hồ sơ, mật khẩu, API key mã hoá, tuỳ chọn)
+Module: `backend/app/modules/user_settings/`. Mọi endpoint yêu cầu đăng nhập, luôn thao tác trên chính user đang gọi (không có `{id}` của người khác).
+
+### Hồ sơ
+`GET /settings/profile` → `{ "data": { "id", "username", "email", "display_name", "created_at" } }`.
+`PUT /settings/profile` — từng phần (`display_name?`, `email?`). Email trùng người khác → `409 EMAIL_TAKEN`.
+
+### Đổi mật khẩu
+`PUT /settings/password` — `{ "current_password", "new_password" (≥8 ký tự) }` → `204`. Sai mật khẩu hiện tại → `400 INVALID_PASSWORD`. Đổi xong: mọi phiên khác (thiết bị/trình duyệt khác) bị thu hồi, phiên đang dùng để đổi vẫn còn hiệu lực.
+
+### API key LLM
+`GET /settings/api-keys` → `{ "data": [{ "provider": "openai", "configured": true, "last4": "1234", "updated_at": "..." }, ...] }` — luôn trả đủ 7 provider (`google`/`openai`/`anthropic`/`openrouter`/`deepseek`/`azure`/`hub1`), **không bao giờ trả key gốc**.
+`PUT /settings/api-keys/{provider}` — `{ "api_key": "sk-...", "config": {} }` → mã hoá (Fernet, khoá `SECRETS_KEY` trong `backend/.env`) trước khi lưu, upsert theo `(owner_id, provider)`.
+`DELETE /settings/api-keys/{provider}` → `204` (idempotent, chưa có key thì cũng trả `204`).
+
+Agents (M4: Planner) tự động dùng key `openai` của user nếu đã cấu hình, rơi về `OPENAI_API_KEY` trong `.env` nếu chưa — không có endpoint nào trả key đã giải mã.
+
+### Tuỳ chọn cá nhân
+`GET/PUT /settings/preferences` — `{ "theme": "light" | "dark", "notifications": {...} }`. Theme đổi ở nút trên header hoặc tab Appearance đều gọi endpoint này; mặc định `light`/`{}` khi user chưa lưu lần nào.
+
 ## Not API yet
-Reports, Comparisons and Settings currently use frontend local state. Add endpoints later with the same flow: router → service → repository.
+Reports and Comparisons currently use frontend local state. Add endpoints later with the same flow: router → service → repository.

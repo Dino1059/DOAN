@@ -1,7 +1,10 @@
 // @ts-nocheck
 import React from 'react';
 import { InitialReports } from '../mockData';
-import { createEnvironment, deleteEnvironment, listEnvironments, testEnvironmentConnection, updateEnvironment } from '../api';
+import {
+  changePassword, createEnvironment, deleteApiKey, deleteEnvironment, getProfile, listApiKeys, listEnvironments,
+  setApiKey, testEnvironmentConnection, updateEnvironment, updateProfile,
+} from '../api';
 
 // Temporary home for modules without backend APIs yet — split into pages/XxxPage.tsx once each gets an API.
 
@@ -127,22 +130,138 @@ export const EnvironmentsPage = ({ isLight }) => {
   );
 };
 
-export const SettingsPage = ({ isLight, user }) => {
+const PROVIDER_LABELS = {
+  google: 'GOOGLE_API_KEY (Gemini)', openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY', deepseek: 'DEEPSEEK_API_KEY', azure: 'AZURE_API_KEY', hub1: 'HUB1_API_KEY',
+};
+
+export const SettingsPage = ({ isLight, user, theme, onThemeChange }) => {
   const [settingsTab, setSettingsTab] = React.useState('Profile');
   const [settingsNotice, setSettingsNotice] = React.useState('');
+  const [settingsError, setSettingsError] = React.useState('');
+
+  const [profile, setProfile] = React.useState(null);
+  const [profileForm, setProfileForm] = React.useState({ display_name: '', email: '' });
+  const [passwordForm, setPasswordForm] = React.useState({ current: '', next: '', confirm: '' });
+
+  const [apiKeys, setApiKeys] = React.useState([]);
+  const [keyDrafts, setKeyDrafts] = React.useState({});
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    getProfile().then(p => { setProfile(p); setProfileForm({ display_name: p.display_name, email: p.email }); }).catch(err => setSettingsError(err.message));
+    listApiKeys().then(setApiKeys).catch(err => setSettingsError(err.message));
+  }, []);
+
+  const notify = (fn, ...args) => {
+    setBusy(true);
+    setSettingsError('');
+    return fn(...args).finally(() => setBusy(false));
+  };
+
+  const saveProfile = () => {
+    notify(updateProfile, profileForm)
+      .then(p => { setProfile(p); setSettingsNotice('Profile changes saved.'); })
+      .catch(err => setSettingsError(err.message));
+  };
+
+  const savePassword = () => {
+    if (!passwordForm.next || passwordForm.next !== passwordForm.confirm) {
+      setSettingsError('New password and confirmation do not match.');
+      return;
+    }
+    notify(changePassword, passwordForm.current, passwordForm.next)
+      .then(() => { setPasswordForm({ current: '', next: '', confirm: '' }); setSettingsNotice('Password changed. Other devices were signed out.'); })
+      .catch(err => setSettingsError(err.message));
+  };
+
+  const saveApiKey = (provider) => {
+    const value = keyDrafts[provider];
+    if (!value || value.trim().length < 8) { setSettingsError('API key looks too short.'); return; }
+    notify(setApiKey, provider, value.trim())
+      .then(updated => {
+        setApiKeys(keys => keys.map(k => k.provider === provider ? updated : k));
+        setKeyDrafts(d => ({ ...d, [provider]: '' }));
+        setSettingsNotice(`${PROVIDER_LABELS[provider]} saved.`);
+      })
+      .catch(err => setSettingsError(err.message));
+  };
+
+  const removeApiKey = (provider) => {
+    notify(deleteApiKey, provider)
+      .then(() => {
+        setApiKeys(keys => keys.map(k => k.provider === provider ? { ...k, configured: false, last4: null } : k));
+        setSettingsNotice(`${PROVIDER_LABELS[provider]} removed.`);
+      })
+      .catch(err => setSettingsError(err.message));
+  };
+
+  const inputClass = `w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`;
 
   return (
     <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border grid grid-cols-1 lg:grid-cols-12 gap-8`}>
       <aside className={`lg:col-span-3 lg:border-r lg:pr-6 ${isLight ? 'border-slate-300' : 'border-white/10'}`}>
-        <nav className="space-y-1">{['Profile', 'API Keys & LLM Providers', 'Team & Members', 'Notifications', 'Appearance', 'Integrations'].map(tab => <button key={tab} onClick={() => setSettingsTab(tab)} className={`w-full rounded-xl px-4 py-3 text-left text-sm cursor-pointer ${settingsTab === tab ? (isLight ? 'bg-slate-200 text-slate-900 font-semibold' : 'bg-white/10 text-white font-semibold') : (isLight ? 'text-slate-600 hover:bg-slate-100' : 'text-white/60 hover:bg-white/5')}`}>{tab}</button>)}</nav>
+        <nav className="space-y-1">{['Profile', 'API Keys & LLM Providers', 'Team & Members', 'Notifications', 'Appearance', 'Integrations'].map(tab => <button key={tab} onClick={() => { setSettingsTab(tab); setSettingsNotice(''); setSettingsError(''); }} className={`w-full rounded-xl px-4 py-3 text-left text-sm cursor-pointer ${settingsTab === tab ? (isLight ? 'bg-slate-200 text-slate-900 font-semibold' : 'bg-white/10 text-white font-semibold') : (isLight ? 'text-slate-600 hover:bg-slate-100' : 'text-white/60 hover:bg-white/5')}`}>{tab}</button>)}</nav>
       </aside>
       <div className="lg:col-span-9">
         <div className={`text-xs font-mono uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-white/60'}`}>// Settings</div>
         <h2 className={`font-heading text-2xl font-semibold mb-6 ${isLight ? 'text-slate-900' : 'text-white'}`}>{settingsTab}</h2>
-        {settingsTab === 'Profile' && <div className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="text-sm"><span className="block mb-1 opacity-70">Username</span><input defaultValue={user.username} className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`} /></label><label className="text-sm"><span className="block mb-1 opacity-70">Email</span><input defaultValue="admin@example.com" className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`} /></label><label className="text-sm"><span className="block mb-1 opacity-70">New Password</span><input type="password" placeholder="••••••••" className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`} /></label><label className="text-sm"><span className="block mb-1 opacity-70">Confirm Password</span><input type="password" placeholder="••••••••" className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`} /></label></div><button onClick={() => setSettingsNotice('Profile changes saved.')} className="bg-slate-900 text-white rounded-xl px-5 py-2.5 text-sm font-semibold cursor-pointer">Save Changes</button></div>}
-        {settingsTab === 'API Keys & LLM Providers' && <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{[['GOOGLE_API_KEY (Gemini)', true], ['OPENAI_API_KEY', false], ['ANTHROPIC_API_KEY', false], ['HUB1_API_KEY', true]].map(([key, configured]) => <div key={key} className={`flex items-center justify-between gap-3 border-b border-dashed py-4 ${isLight ? 'border-slate-300' : 'border-white/10'}`}><span className="text-sm opacity-80">{key}</span><span className={`rounded-full border px-3 py-1 text-xs ${configured ? 'border-emerald-400/50 text-emerald-600 bg-emerald-500/10' : 'border-slate-400 text-slate-500'}`}>{configured ? 'Configured' : 'Not configured'}</span></div>)}</div>}
-        {settingsTab !== 'Profile' && settingsTab !== 'API Keys & LLM Providers' && <div className={`rounded-2xl border border-dashed p-10 text-center text-sm ${isLight ? 'border-slate-300 text-slate-500' : 'border-white/20 text-white/50'}`}>{settingsTab} settings are ready to configure.</div>}
+
+        {settingsTab === 'Profile' && (
+          <div className="space-y-8">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="text-sm"><span className="block mb-1 opacity-70">Username</span><input disabled value={user.username} className={`${inputClass} opacity-60`} /></label>
+                <label className="text-sm"><span className="block mb-1 opacity-70">Display Name</span><input value={profileForm.display_name} onChange={e => setProfileForm({ ...profileForm, display_name: e.target.value })} className={inputClass} /></label>
+                <label className="text-sm md:col-span-2"><span className="block mb-1 opacity-70">Email</span><input value={profileForm.email} onChange={e => setProfileForm({ ...profileForm, email: e.target.value })} className={inputClass} /></label>
+              </div>
+              <button onClick={saveProfile} disabled={busy || !profile} className="bg-slate-900 text-white rounded-xl px-5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50">Save Changes</button>
+            </div>
+            <div className={`space-y-4 border-t pt-6 ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+              <h3 className="text-sm font-semibold opacity-80">Change Password</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <label className="text-sm"><span className="block mb-1 opacity-70">Current Password</span><input type="password" value={passwordForm.current} onChange={e => setPasswordForm({ ...passwordForm, current: e.target.value })} placeholder="••••••••" className={inputClass} /></label>
+                <label className="text-sm"><span className="block mb-1 opacity-70">New Password</span><input type="password" value={passwordForm.next} onChange={e => setPasswordForm({ ...passwordForm, next: e.target.value })} placeholder="••••••••" className={inputClass} /></label>
+                <label className="text-sm"><span className="block mb-1 opacity-70">Confirm Password</span><input type="password" value={passwordForm.confirm} onChange={e => setPasswordForm({ ...passwordForm, confirm: e.target.value })} placeholder="••••••••" className={inputClass} /></label>
+              </div>
+              <button onClick={savePassword} disabled={busy || !passwordForm.current || !passwordForm.next} className="bg-slate-900 text-white rounded-xl px-5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50">Change Password</button>
+            </div>
+          </div>
+        )}
+
+        {settingsTab === 'API Keys & LLM Providers' && (
+          <div className="space-y-3">
+            {apiKeys.map(({ provider, configured, last4 }) => (
+              <div key={provider} className={`flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-dashed py-4 ${isLight ? 'border-slate-300' : 'border-white/10'}`}>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm opacity-80">{PROVIDER_LABELS[provider] || provider}</span>
+                  <span className={`rounded-full border px-3 py-1 text-xs ${configured ? 'border-emerald-400/50 text-emerald-600 bg-emerald-500/10' : 'border-slate-400 text-slate-500'}`}>{configured ? `Configured (…${last4})` : 'Not configured'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input value={keyDrafts[provider] || ''} onChange={e => setKeyDrafts({ ...keyDrafts, [provider]: e.target.value })} placeholder={configured ? 'Replace key…' : 'sk-…'} className={`rounded-xl border px-3 py-2 text-xs w-48 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`} />
+                  <button onClick={() => saveApiKey(provider)} disabled={busy} className="rounded-xl border px-3 py-1.5 text-xs cursor-pointer disabled:opacity-50">Save</button>
+                  {configured && <button onClick={() => removeApiKey(provider)} disabled={busy} className="rounded-xl border border-rose-400/50 text-rose-600 px-3 py-1.5 text-xs cursor-pointer disabled:opacity-50">Remove</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {settingsTab === 'Appearance' && (
+          <div className="space-y-4">
+            <p className="text-sm opacity-70">Theme applies immediately and is remembered for your account.</p>
+            <div className="flex gap-3">
+              {['light', 'dark'].map(t => (
+                <button key={t} onClick={() => onThemeChange(t)} className={`rounded-xl border px-5 py-2.5 text-sm capitalize cursor-pointer ${theme === t ? (isLight ? 'bg-slate-900 text-white' : 'bg-white text-black') : (isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10')}`}>{t} mode</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!['Profile', 'API Keys & LLM Providers', 'Appearance'].includes(settingsTab) && <div className={`rounded-2xl border border-dashed p-10 text-center text-sm ${isLight ? 'border-slate-300 text-slate-500' : 'border-white/20 text-white/50'}`}>{settingsTab} settings are ready to configure.</div>}
+
         {settingsNotice && <div className="mt-4 text-sm text-emerald-600">{settingsNotice}</div>}
+        {settingsError && <div className="mt-4 text-sm text-rose-600">{settingsError}</div>}
       </div>
     </section>
   );
