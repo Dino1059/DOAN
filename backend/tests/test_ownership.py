@@ -5,7 +5,7 @@ Mỗi module mới chỉ cần thêm endpoint vào danh sách OWNED_ENDPOINTS.
 import pytest
 
 from app.core.dependencies import CurrentUserInfo, get_current_user
-from tests.conftest import ensure_user
+from tests.conftest import ensure_user, run_sql
 
 pytestmark = pytest.mark.usefixtures("clean_db")
 
@@ -35,6 +35,16 @@ OWNED_ENDPOINTS = [
     ("DELETE", "/test-cases/{test_case_id}", None),
     ("POST", "/test-cases/{test_case_id}/run", None),
     ("POST", "/test-cases/from-plan/{plan_id}", {}),
+    ("GET", "/reports/{report_id}", None),
+    ("GET", "/reports/{report_id}/download", None),
+    ("DELETE", "/reports/{report_id}", None),
+    ("POST", "/reports/{report_id}/share", None),
+    ("DELETE", "/reports/{report_id}/share", None),
+    ("GET", "/comparisons/{comparison_id}", None),
+    ("DELETE", "/comparisons/{comparison_id}", None),
+    ("POST", "/comparisons/{comparison_id}/share", None),
+    ("DELETE", "/comparisons/{comparison_id}/share", None),
+    ("GET", "/comparisons/diff?run_a={run_id}&run_b={run_id_2}", None),
 ]
 
 
@@ -42,13 +52,24 @@ OWNED_ENDPOINTS = [
 def owned_by_a(client):
     data = client.post("/tasks/generate-plan", json={"prompt": "User A private flow"}).json()["data"]
     run = client.post("/tasks/run", json={"task_id": data["plan_id"]}).json()["data"]
+    rerun = client.post(f"/test-runs/{run['task_id']}/rerun").json()["data"]
     env = client.post("/environments", json={"name": "A's env", "base_url": "https://example.com"}).json()["data"]
     test_case = client.post(
         "/test-cases", json={"name": "A's test case", "steps": [{"action": "Open URL", "selector": "https://a.test", "expected": "ok"}]}
     ).json()["data"]
+
+    # Báo cáo/so sánh cần run đã xong — đánh dấu ngay bằng SQL thay vì chờ SimulatedRunner chạy thật.
+    run_sql(
+        "UPDATE test_runs SET status = 'completed', started_at = now(), finished_at = now() WHERE id = ANY(:ids)",
+        {"ids": [run["task_id"], rerun["task_id"]]},
+    )
+    report = client.post("/reports", json={"run_id": run["task_id"], "format": "markdown"}).json()["data"]
+    comparison = client.post("/comparisons", json={"run_a_id": run["task_id"], "run_b_id": rerun["task_id"]}).json()["data"]
+
     return {
         "plan_id": data["plan_id"], "conversation_id": data["conversation_id"], "run_id": run["task_id"],
-        "environment_id": env["id"], "test_case_id": test_case["id"],
+        "run_id_2": rerun["task_id"], "environment_id": env["id"], "test_case_id": test_case["id"],
+        "report_id": report["id"], "comparison_id": comparison["id"],
     }
 
 
@@ -90,3 +111,8 @@ def test_other_user_sees_empty_environment_list(client, owned_by_a, as_user_b):
 
 def test_other_user_sees_empty_test_case_list(client, owned_by_a, as_user_b):
     assert client.get("/test-cases").json()["data"] == []
+
+
+def test_other_user_sees_empty_report_and_comparison_lists(client, owned_by_a, as_user_b):
+    assert client.get("/reports").json()["data"] == []
+    assert client.get("/comparisons").json()["data"] == []

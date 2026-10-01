@@ -10,11 +10,15 @@ from app.core.health import router as health_router
 from app.db.session import SessionLocal, engine
 from app.modules.execution.repository import RunRepository
 from app.modules.auth.router import router as auth_router
+from app.modules.comparisons.router import public_router as comparisons_public_router
+from app.modules.comparisons.router import router as comparisons_router
 from app.modules.environments.router import router as environments_router
 from app.modules.evidence.router import router as evidence_router
 from app.modules.execution.router import router as execution_router
 from app.modules.execution.router import run_launcher
 from app.modules.feedback.router import router as feedback_router
+from app.modules.reports.router import public_router as reports_public_router
+from app.modules.reports.router import router as reports_router
 from app.modules.test_cases.router import router as test_cases_router
 from app.modules.test_planning.router import router as test_planning_router
 from app.modules.test_runs.router import router as test_runs_router
@@ -59,3 +63,7 @@ app.include_router(feedback_router)
 app.include_router(environments_router)
 app.include_router(user_settings_router)
 app.include_router(test_cases_router)
+app.include_router(reports_router)
+app.include_router(reports_public_router)
+app.include_router(comparisons_router)
+app.include_router(comparisons_public_router)

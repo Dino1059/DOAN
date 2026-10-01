@@ -24,7 +24,3 @@ export const FallbackPlanSteps = [
   { id: 6, action: "Validate API Response", selector: "POST /api/auth/forgot-password", expected: "JSON response payload valid" }
 ];
 
-export const InitialReports = [
-  { id: 'RPT-2201', runId: 'RUN-9421', format: 'Markdown', created: '10 mins ago', name: 'Forgot Password E2E Flow', status: 'Passed', duration: '18.4s', failedStep: '—' },
-  { id: 'RPT-2200', runId: 'RUN-9419', format: 'PDF', created: '3 hours ago', name: 'User Registration Validation', status: 'Failed', duration: '24.6s', failedStep: 'Step 4 / 4' }
-];

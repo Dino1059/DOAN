@@ -284,5 +284,48 @@ Module: `backend/app/modules/test_cases/`. Mọi endpoint yêu cầu đăng nh�
 ### Chạy test case
 `POST /test-cases/{id}/run` — `{ "environment_id"? }` → `202`, cùng `RunStarted` như `POST /tasks/run`. Run tạo ra có `test_case_id` (xem `GET /tasks/{id}` / `GET /test-runs/{id}`), không có `plan_id`.
 
+## Reports (M11 — xuất báo cáo Markdown/PDF từ 1 run)
+Module: `backend/app/modules/reports/`. Mọi endpoint (trừ link chia sẻ) yêu cầu đăng nhập, chỉ thấy báo cáo của chính mình.
+
+### Tạo / danh sách
+`POST /reports` — `{ "run_id", "format": "markdown" | "pdf", "name"? }` → `201`, `ReportDetailOut` (xem dưới). Run chưa xong (không ở trạng thái `completed`/`failed`/`cancelled`) → `409 RUN_NOT_FINISHED`. Run không phải của mình → `404`.
+`GET /reports?q=&format=&suite=&date_range=` → `{ "data": [ReportOut, ...] }`, mới nhất trước. `suite` lọc theo suite của run liên kết (JOIN `test_runs`), `date_range` là `24h`/`7d`/`30d` tính theo lúc tạo báo cáo.
+
+`ReportOut`: `{ "id": "RPT-...", "run_id", "name", "format", "shared": bool, "created_at" }`.
+
+### Chi tiết / tải về
+`GET /reports/{id}` → `ReportDetailOut` = `ReportOut` + `{ "result": "Passed"|"Failed"|"Cancelled", "duration": "3.1s", "failed_step": "Step 4 / 6" | "—" }` — 3 trường này **tính từ run liên kết**, không lưu lại ở bảng `reports`.
+`GET /reports/{id}/download` → file (`text/markdown` hoặc `application/pdf`, `Content-Disposition: attachment`).
+`DELETE /reports/{id}` → `204`, xoá luôn file đã xuất.
+
+### Chia sẻ
+`POST /reports/{id}/share` → `{ "share_token", "share_path": "/shared/reports/{token}" }` (sinh token nếu chưa có, giữ nguyên nếu đã chia sẻ).
+`DELETE /reports/{id}/share` → `204`, huỷ chia sẻ.
+`GET /shared/reports/{token}` — **không cần đăng nhập**, trả thẳng file như `/download`. Token sai hoặc đã unshare → `404`.
+
+## Comparisons (M12 — so 2 lần chạy)
+Module: `backend/app/modules/comparisons/`. Xem diff **không ghi DB**; chỉ `POST /comparisons` (Save) mới tạo bản ghi.
+
+### Xem diff (không lưu)
+`GET /comparisons/diff?run_a={id}&run_b={id}` → `ComparisonResult`:
+```json
+{ "run_a": { "id", "name", "status", "duration" }, "run_b": { "...": "..." },
+  "result": "Passed -> Failed", "time_difference": "+3.2s", "changed_steps": "2 / 8",
+  "visual_difference": "1 region(s)" | "No visual difference" | "No visual diff data (B is not a Re-run of A)",
+  "steps": [{ "step_no", "action", "a_status", "b_status", "a_observation", "b_observation", "changed": bool }],
+  "api_diff": [{ "step_no", "changed": bool, "a": { "status_code", "response_body" } | null, "b": "..." }] }
+```
+- `run_a == run_b` → `422 SAME_RUN`. Run không phải của mình → `404`.
+- So khớp theo `step_no`; bước chỉ có ở 1 bên cũng tính là `changed`.
+- `api_diff` chỉ gồm bước có bằng chứng `network.api_check` (bước "Verify API Response") ở ít nhất 1 run.
+- `visual_difference` chỉ tính được khi B thực sự là Re-run của A (đúng cơ chế Visual Diff của M6); với cặp run bất kỳ thì trả "No visual diff data".
+
+### Lưu / xem / xoá / chia sẻ
+`GET /comparisons` → `{ "data": [ComparisonOut, ...] }`. `POST /comparisons` — `{ "run_a_id", "run_b_id", "name"? }` → `201`; trùng cặp (cùng user) → `409 COMPARISON_EXISTS`; `run_a_id == run_b_id` → `422`.
+`GET /comparisons/{id}` → `ComparisonOut` + `{ "result": ComparisonResult }` (diff tính lại ngay lúc gọi, không đọc từ cache).
+`DELETE /comparisons/{id}` → `204`.
+`POST /comparisons/{id}/share` / `DELETE /comparisons/{id}/share` — giống Reports.
+`GET /shared/comparisons/{token}` — không cần đăng nhập, trả `ComparisonResult`.
+
 ## Not API yet
-Reports and Comparisons currently use frontend local state. Add endpoints later with the same flow: router → service → repository.
+Settings tabs Team & Members / Notifications / Integrations currently use frontend local state (placeholder, chưa có bảng — xem mục 10.6 của `BACKEND_STRUCTURE_PLAN.md`).

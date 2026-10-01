@@ -1,9 +1,10 @@
 // @ts-nocheck
 import React from 'react';
-import { InitialReports } from '../mockData';
 import {
-  changePassword, createEnvironment, deleteApiKey, deleteEnvironment, getProfile, listApiKeys, listEnvironments,
-  setApiKey, testEnvironmentConnection, updateEnvironment, updateProfile,
+  API_BASE, changePassword, createEnvironment, deleteApiKey, deleteComparison, deleteEnvironment, deleteReport,
+  diffRuns, downloadReport, generateReport, getProfile, getReport, listApiKeys, listComparisons, listEnvironments,
+  listReports, saveComparison, setApiKey, shareComparison, shareReport, testEnvironmentConnection, unshareComparison,
+  unshareReport, updateEnvironment, updateProfile,
 } from '../api';
 
 // Temporary home for modules without backend APIs yet — split into pages/XxxPage.tsx once each gets an API.
@@ -268,52 +269,247 @@ export const SettingsPage = ({ isLight, user, theme, onThemeChange }) => {
 };
 
 export const ReportsPage = ({ isLight, recentRuns }) => {
-  const [reports, setReports] = React.useState(InitialReports);
+  const [reports, setReports] = React.useState([]);
   const [reportSearch, setReportSearch] = React.useState('');
   const [reportFormatFilter, setReportFormatFilter] = React.useState('All');
-  const [reportSuiteFilter, setReportSuiteFilter] = React.useState('All');
-  const [reportDateFilter, setReportDateFilter] = React.useState('All time');
   const [selectedReport, setSelectedReport] = React.useState(null);
-  const [reportNotice, setReportNotice] = React.useState('');
+  const [preview, setPreview] = React.useState('');
+  const [genRunId, setGenRunId] = React.useState('');
+  const [genFormat, setGenFormat] = React.useState('markdown');
+  const [notice, setNotice] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
 
-  const reportSuites = ['All', ...new Set(reports.map(report => report.name.includes('Registration') ? 'Authentication' : 'E-Commerce'))];
-  const filteredReports = reports.filter(report => {
-    const query = reportSearch.trim().toLowerCase();
-    const matchesDate = reportDateFilter === 'All time' || (reportDateFilter === 'Last 24 hours' && report.created.includes('min')) || (reportDateFilter === 'Last 7 days' && !report.created.includes('Yesterday')) || reportDateFilter === 'Last 30 days';
-    return (!query || `${report.id} ${report.runId} ${report.name}`.toLowerCase().includes(query))
-      && (reportFormatFilter === 'All' || report.format === reportFormatFilter)
-      && (reportSuiteFilter === 'All' || (reportSuiteFilter === 'Authentication' ? report.name.includes('Registration') : report.name.includes('Coupon')))
-      && matchesDate;
-  });
+  const load = React.useCallback(() => {
+    listReports({ format: reportFormatFilter === 'All' ? undefined : reportFormatFilter.toLowerCase() })
+      .then(setReports).catch(err => setError(err.message));
+  }, [reportFormatFilter]);
 
-  const generateReport = () => {
-    const nextReport = { id: `RPT-${2202 + reports.length}`, runId: recentRuns[0]?.id || 'RUN-9421', format: 'Markdown', created: 'Just now', name: recentRuns[0]?.name || 'New Test Report', status: recentRuns[0]?.status || 'Passed', duration: recentRuns[0]?.duration || '12.5s', failedStep: '—' };
-    setReports(items => [nextReport, ...items]);
-    setReportNotice('Report generated successfully.');
+  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => { if (!genRunId && recentRuns[0]) setGenRunId(recentRuns[0].id); }, [recentRuns, genRunId]);
+
+  const query = reportSearch.trim().toLowerCase();
+  const filteredReports = reports.filter(r => !query || `${r.id} ${r.run_id} ${r.name}`.toLowerCase().includes(query));
+
+  const handleGenerate = () => {
+    if (!genRunId) { setError('Pick a run to generate a report from.'); return; }
+    setBusy(true); setError('');
+    generateReport(genRunId, genFormat)
+      .then(report => { setNotice(`Report ${report.id} generated.`); load(); })
+      .catch(err => setError(err.message))
+      .finally(() => setBusy(false));
+  };
+
+  const openReport = (row) => {
+    setError('');
+    getReport(row.id).then(report => {
+      setSelectedReport(report);
+      setPreview('');
+      if (report.format === 'markdown') {
+        fetch(`${API_BASE}/reports/${report.id}/download`, { credentials: 'include' })
+          .then(res => res.text()).then(setPreview).catch(() => {});
+      }
+    }).catch(err => setError(err.message));
+  };
+
+  const handleDownload = (row) => downloadReport(row.id, `${row.id}.${row.format === 'pdf' ? 'pdf' : 'md'}`).catch(err => setError(err.message));
+
+  const handleShare = () => {
+    shareReport(selectedReport.id)
+      .then(({ share_path }) => {
+        const url = `${API_BASE}${share_path}`;
+        navigator.clipboard?.writeText(url).catch(() => {});
+        setNotice(`Share link copied: ${url}`);
+        setSelectedReport(r => ({ ...r, shared: true }));
+      })
+      .catch(err => setError(err.message));
+  };
+
+  const handleUnshare = () => {
+    unshareReport(selectedReport.id)
+      .then(() => { setNotice('Report is no longer shared.'); setSelectedReport(r => ({ ...r, shared: false })); })
+      .catch(err => setError(err.message));
+  };
+
+  const handleDelete = (row) => {
+    deleteReport(row.id).then(() => {
+      setNotice(`Deleted ${row.id}.`);
+      if (selectedReport?.id === row.id) setSelectedReport(null);
+      load();
+    }).catch(err => setError(err.message));
   };
 
   return (
     <>
       <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border space-y-5`}>
-        <div className="flex items-center justify-between gap-4"><h2 className={`font-heading text-2xl font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>Reports — Test Reports</h2><button onClick={generateReport} className="bg-slate-700 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer hover:bg-slate-800">+ Generate Report</button></div>
-        <div className="flex flex-col lg:flex-row gap-3 justify-between"><input value={reportSearch} onChange={(e) => setReportSearch(e.target.value)} placeholder="⌕ Search reports..." className={`w-full lg:max-w-xs rounded-full border px-4 py-2.5 text-sm focus:outline-none ${isLight ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-white/5 border-white/15 text-white placeholder-white/40'}`} /><div className="flex flex-wrap gap-2"><select value={reportFormatFilter} onChange={(e) => setReportFormatFilter(e.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${isLight ? 'bg-white border-slate-300 text-slate-600' : 'bg-white/5 border-white/15 text-white'}`}><option>All</option><option>Markdown</option><option>PDF</option></select><select value={reportSuiteFilter} onChange={(e) => setReportSuiteFilter(e.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${isLight ? 'bg-white border-slate-300 text-slate-600' : 'bg-white/5 border-white/15 text-white'}`}>{reportSuites.map(suite => <option key={suite}>{suite}</option>)}</select><select value={reportDateFilter} onChange={(e) => setReportDateFilter(e.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${isLight ? 'bg-white border-slate-300 text-slate-600' : 'bg-white/5 border-white/15 text-white'}`}><option>All time</option><option>Last 24 hours</option><option>Last 7 days</option><option>Last 30 days</option></select></div></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead><tr className={`border-b ${isLight ? 'border-slate-300 text-slate-500' : 'border-white/10 text-white/50'} text-xs uppercase tracking-wide`}><th className="py-3 px-3">Report ID</th><th className="py-3 px-3">Linked Run</th><th className="py-3 px-3">Format</th><th className="py-3 px-3">Created</th><th className="py-3 px-3 text-right">Actions</th></tr></thead><tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-white/10'}`}>{filteredReports.map(report => <tr key={report.id} className={`${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/5'}`}><td className="py-4 px-3 font-mono font-medium">{report.id}</td><td className="py-4 px-3 text-emerald-500">{report.runId}</td><td className="py-4 px-3">{report.format}</td><td className="py-4 px-3 opacity-70">{report.created}</td><td className="py-4 px-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => setSelectedReport(report)} className={`rounded-xl border px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10'}`}>View</button><button onClick={() => setReportNotice(`${report.format} report ${report.id} is ready to download.`)} className={`rounded-xl border px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10'}`}>Download</button></div></td></tr>)}</tbody></table>{filteredReports.length === 0 && <div className="py-10 text-center text-sm opacity-60">No reports match the selected filters.</div>}</div>
-        {reportNotice && <div className="text-sm text-emerald-600">{reportNotice}</div>}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <h2 className={`font-heading text-2xl font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>Reports — Test Reports</h2>
+          <div className="flex items-center gap-2">
+            <select value={genRunId} onChange={e => setGenRunId(e.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`}>
+              {recentRuns.length === 0 && <option value="">No runs yet</option>}
+              {recentRuns.map(run => <option key={run.id} value={run.id}>{run.id} · {run.name}</option>)}
+            </select>
+            <select value={genFormat} onChange={e => setGenFormat(e.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`}>
+              <option value="markdown">Markdown</option><option value="pdf">PDF</option>
+            </select>
+            <button onClick={handleGenerate} disabled={busy} className="bg-slate-700 text-white rounded-xl px-4 py-2 text-sm font-semibold cursor-pointer hover:bg-slate-800 disabled:opacity-50">+ Generate Report</button>
+          </div>
+        </div>
+        <div className="flex flex-col lg:flex-row gap-3 justify-between">
+          <input value={reportSearch} onChange={(e) => setReportSearch(e.target.value)} placeholder="⌕ Search reports..." className={`w-full lg:max-w-xs rounded-full border px-4 py-2.5 text-sm focus:outline-none ${isLight ? 'bg-white border-slate-300 text-slate-900 placeholder-slate-400' : 'bg-white/5 border-white/15 text-white placeholder-white/40'}`} />
+          <select value={reportFormatFilter} onChange={(e) => setReportFormatFilter(e.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${isLight ? 'bg-white border-slate-300 text-slate-600' : 'bg-white/5 border-white/15 text-white'}`}><option>All</option><option>Markdown</option><option>Pdf</option></select>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead><tr className={`border-b ${isLight ? 'border-slate-300 text-slate-500' : 'border-white/10 text-white/50'} text-xs uppercase tracking-wide`}><th className="py-3 px-3">Report ID</th><th className="py-3 px-3">Linked Run</th><th className="py-3 px-3">Format</th><th className="py-3 px-3">Created</th><th className="py-3 px-3 text-right">Actions</th></tr></thead><tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-white/10'}`}>{filteredReports.map(report => <tr key={report.id} className={`${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/5'}`}><td className="py-4 px-3 font-mono font-medium">{report.id}</td><td className="py-4 px-3 text-emerald-500">{report.run_id}</td><td className="py-4 px-3 capitalize">{report.format}</td><td className="py-4 px-3 opacity-70">{new Date(report.created_at).toLocaleString()}</td><td className="py-4 px-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => openReport(report)} className={`rounded-xl border px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10'}`}>View</button><button onClick={() => handleDownload(report)} className={`rounded-xl border px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10'}`}>Download</button><button onClick={() => handleDelete(report)} className="rounded-xl border border-rose-400/50 text-rose-600 px-3 py-1.5 text-xs cursor-pointer hover:bg-rose-500/10">Delete</button></div></td></tr>)}</tbody></table>{filteredReports.length === 0 && <div className="py-10 text-center text-sm opacity-60">No reports match the selected filters.</div>}</div>
+        {notice && <div className="text-sm text-emerald-600">{notice}</div>}
+        {error && <div className="text-sm text-rose-600">{error}</div>}
       </section>
-      {selectedReport && <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border`}><div className={`text-xs font-mono uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-white/60'}`}>// Report Detail</div><h3 className={`font-heading text-2xl font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{selectedReport.id} · {selectedReport.name}</h3><div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-5"><div className="space-y-3 text-sm"><div className="flex justify-between border-b border-dashed pb-3"><span className="opacity-60">Result</span><span className={selectedReport.status === 'Passed' ? 'text-emerald-600' : 'text-rose-600'}>{selectedReport.status}</span></div><div className="flex justify-between border-b border-dashed pb-3"><span className="opacity-60">Duration</span><span>{selectedReport.duration}</span></div><div className="flex justify-between border-b border-dashed pb-3"><span className="opacity-60">Failed Step</span><span>{selectedReport.failedStep}</span></div><button onClick={() => setReportNotice(`PDF export started for ${selectedReport.id}.`)} className="rounded-xl border px-4 py-2 cursor-pointer">Download PDF</button><button onClick={() => setReportNotice('Report share link copied.')} className="rounded-xl border px-4 py-2 ml-2 cursor-pointer">Share</button></div><div className={`lg:col-span-2 min-h-[240px] rounded-2xl border-2 border-dashed flex items-center justify-center text-center p-5 ${isLight ? 'border-slate-400 bg-[repeating-linear-gradient(45deg,#fff,#fff_14px,#f1f3f5_14px,#f1f3f5_28px)] text-slate-500' : 'border-white/30 text-white/60'}`}>Markdown/PDF report preview with summary and evidence library</div></div></section>}
+      {selectedReport && <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border`}>
+        <div className={`text-xs font-mono uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-white/60'}`}>// Report Detail</div>
+        <h3 className={`font-heading text-2xl font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>{selectedReport.id} · {selectedReport.name}</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-5">
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between border-b border-dashed pb-3"><span className="opacity-60">Result</span><span className={selectedReport.result === 'Passed' ? 'text-emerald-600' : 'text-rose-600'}>{selectedReport.result}</span></div>
+            <div className="flex justify-between border-b border-dashed pb-3"><span className="opacity-60">Duration</span><span>{selectedReport.duration}</span></div>
+            <div className="flex justify-between border-b border-dashed pb-3"><span className="opacity-60">Failed Step</span><span>{selectedReport.failed_step}</span></div>
+            <button onClick={() => handleDownload(selectedReport)} className="rounded-xl border px-4 py-2 cursor-pointer">Download {selectedReport.format}</button>
+            {selectedReport.shared
+              ? <button onClick={handleUnshare} className="rounded-xl border px-4 py-2 ml-2 cursor-pointer">Unshare</button>
+              : <button onClick={handleShare} className="rounded-xl border px-4 py-2 ml-2 cursor-pointer">Share</button>}
+          </div>
+          <div className={`lg:col-span-2 min-h-[240px] max-h-[420px] overflow-auto rounded-2xl border p-4 text-xs font-mono whitespace-pre-wrap ${isLight ? 'border-slate-300 bg-white text-slate-700' : 'border-white/15 bg-black/30 text-white/80'}`}>
+            {selectedReport.format === 'pdf' ? 'PDF format — click Download to view.' : (preview || 'Loading preview…')}
+          </div>
+        </div>
+      </section>}
     </>
   );
 };
 
 export const ComparisonsPage = ({ isLight, recentRuns }) => {
-  const [comparisonRunA, setComparisonRunA] = React.useState('RUN-9419');
-  const [comparisonRunB, setComparisonRunB] = React.useState('RUN-9420');
-  const [comparisonReady, setComparisonReady] = React.useState(false);
+  const [runA, setRunA] = React.useState('');
+  const [runB, setRunB] = React.useState('');
+  const [result, setResult] = React.useState(null);
+  const [saved, setSaved] = React.useState([]);
+  const [notice, setNotice] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+
+  const loadSaved = React.useCallback(() => { listComparisons().then(setSaved).catch(() => {}); }, []);
+  React.useEffect(() => { loadSaved(); }, [loadSaved]);
+
+  React.useEffect(() => {
+    if (!runA && recentRuns[0]) setRunA(recentRuns[0].id);
+    if (!runB && recentRuns[1]) setRunB(recentRuns[1].id);
+  }, [recentRuns, runA, runB]);
+
+  const handleCompare = () => {
+    if (!runA || !runB) return;
+    setBusy(true); setError(''); setNotice('');
+    diffRuns(runA, runB).then(setResult).catch(err => { setError(err.message); setResult(null); }).finally(() => setBusy(false));
+  };
+
+  const handleSave = () => {
+    saveComparison(runA, runB)
+      .then(c => { setNotice(`Saved comparison ${c.id}.`); loadSaved(); })
+      .catch(err => setError(err.message));
+  };
+
+  const handleOpenSaved = (c) => {
+    setRunA(c.run_a_id); setRunB(c.run_b_id); setError(''); setNotice('');
+    diffRuns(c.run_a_id, c.run_b_id).then(setResult).catch(err => setError(err.message));
+  };
+
+  const handleShareSaved = (c) => {
+    shareComparison(c.id).then(({ share_path }) => {
+      const url = `${API_BASE}${share_path}`;
+      navigator.clipboard?.writeText(url).catch(() => {});
+      setNotice(`Share link copied: ${url}`);
+      loadSaved();
+    }).catch(err => setError(err.message));
+  };
+
+  const handleUnshareSaved = (c) => {
+    unshareComparison(c.id).then(() => { setNotice('No longer shared.'); loadSaved(); }).catch(err => setError(err.message));
+  };
+
+  const handleDeleteSaved = (c) => {
+    deleteComparison(c.id).then(() => { setNotice(`Deleted ${c.id}.`); loadSaved(); }).catch(err => setError(err.message));
+  };
+
+  const stepBadge = (status) => {
+    if (!status) return <span className="opacity-40">—</span>;
+    const ok = status === 'passed';
+    return <span className={`rounded-xl px-2 py-1 ${ok ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>{status}</span>;
+  };
 
   return (
     <>
-      <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border space-y-5`}><h2 className={`font-heading text-2xl font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>Comparisons — Compare Two Runs</h2><div className="grid grid-cols-1 lg:grid-cols-2 gap-4"><label className="text-sm"><span className="block mb-1 opacity-70">Run A (Baseline)</span><select value={comparisonRunA} onChange={(e) => { setComparisonRunA(e.target.value); setComparisonReady(false); }} className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`}>{recentRuns.map(run => <option key={run.id} value={run.id}>{run.id} · {run.name}</option>)}</select></label><label className="text-sm"><span className="block mb-1 opacity-70">Run B (Candidate)</span><select value={comparisonRunB} onChange={(e) => { setComparisonRunB(e.target.value); setComparisonReady(false); }} className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`}>{recentRuns.map(run => <option key={run.id} value={run.id}>{run.id} · {run.name}</option>)}</select></label></div><button onClick={() => setComparisonReady(true)} className="bg-slate-900 text-white rounded-xl px-5 py-2.5 text-sm font-semibold cursor-pointer">Compare</button></section>
-      {comparisonReady && <><div className="grid grid-cols-1 md:grid-cols-4 gap-4">{[['Result', 'Pass → Pass'], ['Time Difference', '+3.2s'], ['Changed Steps', '2 / 8'], ['Visual Difference', '1 region']].map(([label, value]) => <div key={label} className={`liquid-glass-strong rounded-2xl border p-5 ${isLight ? 'border-slate-200' : 'border-white/10'}`}><div className="text-xs uppercase tracking-wide opacity-60">{label}</div><div className="font-heading text-2xl mt-2">{value}</div></div>)}</div><section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border`}><div className={`text-xs font-mono uppercase tracking-wider mb-4 ${isLight ? 'text-slate-500' : 'text-white/60'}`}>// Step Differences</div><div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead><tr className="border-b border-slate-300 text-xs uppercase tracking-wide opacity-70"><th className="py-3 px-3">#</th><th className="py-3 px-3">Action</th><th className="py-3 px-3">Run A</th><th className="py-3 px-3">Run B</th><th className="py-3 px-3">Status</th></tr></thead><tbody><tr className="border-b border-slate-200"><td className="py-4 px-3">1</td><td className="py-4 px-3">Open URL</td><td className="py-4 px-3 rounded-xl bg-emerald-500/10 text-emerald-600">Passed</td><td className="py-4 px-3 rounded-xl bg-emerald-500/10 text-emerald-600">Passed</td><td className="py-4 px-3">No change</td></tr><tr><td className="py-4 px-3">5</td><td className="py-4 px-3">Apply Coupon</td><td className="py-4 px-3 rounded-xl bg-emerald-500/10 text-emerald-600">Passed · $10 off</td><td className="py-4 px-3 rounded-xl bg-rose-500/10 text-rose-600">Failed · $0 off</td><td className="py-4 px-3 text-rose-600">⚠ Difference</td></tr></tbody></table></div></section><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><section className={`liquid-glass-strong rounded-[1.5rem] p-6 border ${isLight ? 'border-slate-200' : 'border-white/10'}`}><div className="text-xs font-mono uppercase tracking-wider opacity-60 mb-3">// Visual Diff</div><div className={`h-56 rounded-2xl border-2 border-dashed flex items-center justify-center text-sm opacity-60 ${isLight ? 'border-slate-400 bg-[repeating-linear-gradient(45deg,#fff,#fff_14px,#f1f3f5_14px,#f1f3f5_28px)]' : 'border-white/30'}`}>Run A / Run B overlay comparison</div></section><section className={`liquid-glass-strong rounded-[1.5rem] p-6 border ${isLight ? 'border-slate-200' : 'border-white/10'}`}><div className="text-xs font-mono uppercase tracking-wider opacity-60 mb-3">// API Response Diff</div><div className={`h-56 rounded-2xl border-2 border-dashed flex items-center justify-center text-sm opacity-60 ${isLight ? 'border-slate-400 bg-[repeating-linear-gradient(45deg,#fff,#fff_14px,#f1f3f5_14px,#f1f3f5_28px)]' : 'border-white/30'}`}>JSON diff — highlight changed fields</div></section></div></>}
+      <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border space-y-5`}>
+        <h2 className={`font-heading text-2xl font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>Comparisons — Compare Two Runs</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <label className="text-sm"><span className="block mb-1 opacity-70">Run A (Baseline)</span><select value={runA} onChange={(e) => { setRunA(e.target.value); setResult(null); }} className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`}>{recentRuns.map(run => <option key={run.id} value={run.id}>{run.id} · {run.name}</option>)}</select></label>
+          <label className="text-sm"><span className="block mb-1 opacity-70">Run B (Candidate)</span><select value={runB} onChange={(e) => { setRunB(e.target.value); setResult(null); }} className={`w-full rounded-xl border px-4 py-3 ${isLight ? 'bg-white border-slate-300' : 'bg-white/5 border-white/15 text-white'}`}>{recentRuns.map(run => <option key={run.id} value={run.id}>{run.id} · {run.name}</option>)}</select></label>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={handleCompare} disabled={busy || !runA || !runB || runA === runB} className="bg-slate-900 text-white rounded-xl px-5 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50">Compare</button>
+          {result && <button onClick={handleSave} className={`rounded-xl border px-5 py-2.5 text-sm cursor-pointer ${isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10'}`}>Save Comparison</button>}
+        </div>
+        {runA === runB && runA && <div className="text-sm text-rose-600">Pick two different runs.</div>}
+        {notice && <div className="text-sm text-emerald-600">{notice}</div>}
+        {error && <div className="text-sm text-rose-600">{error}</div>}
+      </section>
+
+      {saved.length > 0 && (
+        <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border`}>
+          <div className={`text-xs font-mono uppercase tracking-wider mb-4 ${isLight ? 'text-slate-500' : 'text-white/60'}`}>// Saved Comparisons</div>
+          <div className="space-y-2">
+            {saved.map(c => (
+              <div key={c.id} className={`flex flex-wrap items-center justify-between gap-2 border-b border-dashed py-3 text-sm ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+                <div><span className="font-mono">{c.id}</span>{c.name && <span className="opacity-70"> · {c.name}</span>}<span className="opacity-50 ml-2 text-xs">{c.run_a_id} vs {c.run_b_id}</span></div>
+                <div className="flex gap-2">
+                  <button onClick={() => handleOpenSaved(c)} className={`rounded-xl border px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'border-slate-300 hover:bg-slate-100' : 'border-white/20 hover:bg-white/10'}`}>Open</button>
+                  {c.shared
+                    ? <button onClick={() => handleUnshareSaved(c)} className="rounded-xl border px-3 py-1.5 text-xs cursor-pointer">Unshare</button>
+                    : <button onClick={() => handleShareSaved(c)} className="rounded-xl border px-3 py-1.5 text-xs cursor-pointer">Share</button>}
+                  <button onClick={() => handleDeleteSaved(c)} className="rounded-xl border border-rose-400/50 text-rose-600 px-3 py-1.5 text-xs cursor-pointer hover:bg-rose-500/10">Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {result && <>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[['Result', result.result], ['Time Difference', result.time_difference], ['Changed Steps', result.changed_steps], ['Visual Difference', result.visual_difference]].map(([label, value]) => (
+            <div key={label} className={`liquid-glass-strong rounded-2xl border p-5 ${isLight ? 'border-slate-200' : 'border-white/10'}`}><div className="text-xs uppercase tracking-wide opacity-60">{label}</div><div className="font-heading text-xl mt-2">{value}</div></div>
+          ))}
+        </div>
+        <section className={`liquid-glass-strong rounded-[1.5rem] p-6 ${isLight ? 'border-slate-200' : 'border-white/10'} border`}>
+          <div className={`text-xs font-mono uppercase tracking-wider mb-4 ${isLight ? 'text-slate-500' : 'text-white/60'}`}>// Step Differences</div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead><tr className={`border-b text-xs uppercase tracking-wide opacity-70 ${isLight ? 'border-slate-300' : 'border-white/10'}`}><th className="py-3 px-3">#</th><th className="py-3 px-3">Action</th><th className="py-3 px-3">Run A</th><th className="py-3 px-3">Run B</th><th className="py-3 px-3">Status</th></tr></thead>
+            <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-white/10'}`}>{result.steps.map(s => <tr key={s.step_no}><td className="py-4 px-3">{s.step_no}</td><td className="py-4 px-3">{s.action || '—'}</td><td className="py-4 px-3">{stepBadge(s.a_status)}</td><td className="py-4 px-3">{stepBadge(s.b_status)}</td><td className={`py-4 px-3 ${s.changed ? 'text-rose-600' : 'opacity-60'}`}>{s.changed ? '⚠ Difference' : 'No change'}</td></tr>)}</tbody>
+          </table></div>
+        </section>
+        <section className={`liquid-glass-strong rounded-[1.5rem] p-6 border ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
+          <div className="text-xs font-mono uppercase tracking-wider opacity-60 mb-3">// API Response Diff</div>
+          {result.api_diff.length === 0 ? (
+            <div className={`h-32 rounded-2xl border-2 border-dashed flex items-center justify-center text-sm opacity-60 ${isLight ? 'border-slate-400' : 'border-white/30'}`}>No API response checks recorded for these runs.</div>
+          ) : (
+            <div className="space-y-3 text-xs font-mono">
+              {result.api_diff.map(d => (
+                <div key={d.step_no} className={`rounded-xl border p-3 ${d.changed ? 'border-rose-400/50' : (isLight ? 'border-slate-200' : 'border-white/10')}`}>
+                  <div className="mb-2 font-sans text-sm font-semibold">Step {d.step_no} {d.changed ? <span className="text-rose-600">⚠ changed</span> : <span className="opacity-60">no change</span>}</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div><div className="opacity-60 mb-1">Run A — {d.a?.status_code ?? '—'}</div><pre className="whitespace-pre-wrap break-all">{JSON.stringify(d.a?.response_body ?? null, null, 2)}</pre></div>
+                    <div><div className="opacity-60 mb-1">Run B — {d.b?.status_code ?? '—'}</div><pre className="whitespace-pre-wrap break-all">{JSON.stringify(d.b?.response_body ?? null, null, 2)}</pre></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </>}
     </>
   );
 };

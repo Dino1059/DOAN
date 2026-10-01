@@ -22,3 +22,6 @@ argon2-cffi==25.1.0
 httpx==0.28.1
 # Mã hoá API key của user trước khi lưu DB (M9, Fernet)
 cryptography==50.0.2
+# Xuất báo cáo PDF (M11). Plan gốc đề xuất WeasyPrint (cần cairo/pango hệ thống); dùng fpdf2 (thuần Python,
+# không phụ thuộc thư viện hệ thống) để chạy được trên mọi máy không cần cài thêm.
+fpdf2==2.8.9

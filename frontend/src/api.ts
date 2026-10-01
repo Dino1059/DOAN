@@ -222,6 +222,54 @@ export const getPreferences = () => apiFetch('/settings/preferences').then(jsonO
 
 export const updatePreferences = (patch) => sendJson('PUT', '/settings/preferences', patch).then(body => body.data);
 
+// ---------- Reports (M11) ----------
+
+export const listReports = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => { if (value) query.set(key, value); });
+  return apiFetch(`/reports?${query}`).then(jsonOrThrow).then(body => body.data);
+};
+
+export const generateReport = (runId, format, name) =>
+  sendJson('POST', '/reports', { run_id: runId, format, name: name || undefined }).then(body => body.data);
+
+export const getReport = (id) => apiFetch(`/reports/${id}`).then(jsonOrThrow).then(body => body.data);
+
+export const deleteReport = (id) => apiFetch(`/reports/${id}`, { method: 'DELETE' }).then(jsonOrThrow);
+
+// Tải file thật qua fetch (giữ cookie phiên) rồi tạo link download tạm, thay vì mở thẳng URL
+export const downloadReport = (id, filename) =>
+  apiFetch(`/reports/${id}/download`).then(async (res) => {
+    if (!res.ok) throw new ApiError(res.status, 'Unable to download report.');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+export const shareReport = (id) => sendJson('POST', `/reports/${id}/share`, {}).then(body => body.data);
+
+export const unshareReport = (id) => apiFetch(`/reports/${id}/share`, { method: 'DELETE' }).then(jsonOrThrow);
+
+// ---------- Comparisons (M12) ----------
+
+export const diffRuns = (runA, runB) =>
+  apiFetch(`/comparisons/diff?run_a=${encodeURIComponent(runA)}&run_b=${encodeURIComponent(runB)}`)
+    .then(jsonOrThrow).then(body => body.data);
+
+export const listComparisons = () => apiFetch('/comparisons').then(jsonOrThrow).then(body => body.data);
+
+export const saveComparison = (runA, runB, name) =>
+  sendJson('POST', '/comparisons', { run_a_id: runA, run_b_id: runB, name: name || undefined }).then(body => body.data);
+
+export const deleteComparison = (id) => apiFetch(`/comparisons/${id}`, { method: 'DELETE' }).then(jsonOrThrow);
+
+export const shareComparison = (id) => sendJson('POST', `/comparisons/${id}/share`, {}).then(body => body.data);
+
+export const unshareComparison = (id) => apiFetch(`/comparisons/${id}/share`, { method: 'DELETE' }).then(jsonOrThrow);
+
 export const submitFeedback = ({ rating, category, message, username }) =>
   postJson('/feedback', { rating, category, message, username })
     .then(async response => {
