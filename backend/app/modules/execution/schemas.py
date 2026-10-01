@@ -20,6 +20,7 @@ class RunRequest(BaseModel):
 
     plan_id: str | None = None
     task_id: str | None = None  # frontend gửi plan_id trong trường này (task_id của generate-plan)
+    test_case_id: str | None = None  # M10: chạy 1 test case đã lưu (TestCaseService.run gọi vào đây)
     steps: list[StepIn] | None = Field(default=None, min_length=1, max_length=50)
     name: str | None = Field(default=None, max_length=200)
     environment_id: str | None = None
@@ -73,6 +74,7 @@ class RunOut(BaseModel):
     name: str
     runner: str  # "simulated" (M3a) | "playwright" (M4) — UI hiện nhãn Demo mode khi simulated
     plan_id: str | None
+    test_case_id: str | None
     rerun_of: str | None
     current_step: int
     total_steps: int

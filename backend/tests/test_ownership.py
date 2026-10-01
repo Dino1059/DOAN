@@ -30,6 +30,11 @@ OWNED_ENDPOINTS = [
     ("PUT", "/environments/{environment_id}", {"name": "hacked"}),
     ("DELETE", "/environments/{environment_id}", None),
     ("POST", "/environments/{environment_id}/test-connection", None),
+    ("GET", "/test-cases/{test_case_id}", None),
+    ("PUT", "/test-cases/{test_case_id}", {"name": "hacked"}),
+    ("DELETE", "/test-cases/{test_case_id}", None),
+    ("POST", "/test-cases/{test_case_id}/run", None),
+    ("POST", "/test-cases/from-plan/{plan_id}", {}),
 ]
 
 
@@ -38,9 +43,12 @@ def owned_by_a(client):
     data = client.post("/tasks/generate-plan", json={"prompt": "User A private flow"}).json()["data"]
     run = client.post("/tasks/run", json={"task_id": data["plan_id"]}).json()["data"]
     env = client.post("/environments", json={"name": "A's env", "base_url": "https://example.com"}).json()["data"]
+    test_case = client.post(
+        "/test-cases", json={"name": "A's test case", "steps": [{"action": "Open URL", "selector": "https://a.test", "expected": "ok"}]}
+    ).json()["data"]
     return {
         "plan_id": data["plan_id"], "conversation_id": data["conversation_id"], "run_id": run["task_id"],
-        "environment_id": env["id"],
+        "environment_id": env["id"], "test_case_id": test_case["id"],
     }
 
 
@@ -78,3 +86,7 @@ def test_other_user_sees_empty_run_history(client, owned_by_a, as_user_b):
 
 def test_other_user_sees_empty_environment_list(client, owned_by_a, as_user_b):
     assert client.get("/environments").json()["data"] == []
+
+
+def test_other_user_sees_empty_test_case_list(client, owned_by_a, as_user_b):
+    assert client.get("/test-cases").json()["data"] == []

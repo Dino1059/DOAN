@@ -261,5 +261,28 @@ Agents (M4: Planner) tự động dùng key `openai` của user nếu đã cấu
 ### Tuỳ chọn cá nhân
 `GET/PUT /settings/preferences` — `{ "theme": "light" | "dark", "notifications": {...} }`. Theme đổi ở nút trên header hoặc tab Appearance đều gọi endpoint này; mặc định `light`/`{}` khi user chưa lưu lần nào.
 
+## Test Cases (M10 — kho test case)
+Module: `backend/app/modules/test_cases/`. Mọi endpoint yêu cầu đăng nhập, chỉ thấy test case của chính mình.
+
+### Danh sách / tạo thủ công
+`GET /test-cases?q=&suite=&tag=` → `{ "data": [TestCaseOut, ...] }`, mới nhất trước. Lọc `q` theo tên (không phân biệt hoa thường), `suite` khớp đúng, `tag` khớp 1 phần tử trong mảng `tags`.
+`POST /test-cases` — tạo thủ công: `{ "name", "suite"?, "tags"?: string[], "steps": [{ "action", "selector", "expected" }, ...] }`.
+
+`TestCaseOut`:
+```json
+{ "id": "TC-9F3A21C4", "source_plan_id": "PLN-...", "name": "Login smoke", "suite": "Authentication",
+  "tags": ["login", "smoke"], "steps": [{ "action": "...", "selector": "...", "expected": "..." }],
+  "created_at": "...", "updated_at": "..." }
+```
+
+### Đọc / sửa / xoá
+`GET /test-cases/{id}`, `PUT /test-cases/{id}` (từng phần), `DELETE /test-cases/{id}` → `204`. Không phải của mình → `404`.
+
+### Save as Test Case
+`POST /test-cases/from-plan/{plan_id}` — `{ "name"?, "suite"?, "tags"? }`. Chép **bản chụp** `steps` của plan hiện tại (phiên bản mới nhất) vào test case; không gửi `name` thì lấy `objective` của plan. Plan không phải của mình → `404`. Sửa/xoá plan gốc sau đó **không** ảnh hưởng test case đã lưu.
+
+### Chạy test case
+`POST /test-cases/{id}/run` — `{ "environment_id"? }` → `202`, cùng `RunStarted` như `POST /tasks/run`. Run tạo ra có `test_case_id` (xem `GET /tasks/{id}` / `GET /test-runs/{id}`), không có `plan_id`.
+
 ## Not API yet
 Reports and Comparisons currently use frontend local state. Add endpoints later with the same flow: router → service → repository.

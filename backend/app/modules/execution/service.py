@@ -20,6 +20,7 @@ from app.modules.execution.schemas import (
     RunStepOut,
 )
 from app.modules.execution.state_machine import InvalidTransition, ensure_transition
+from app.modules.test_cases.models import TestCase
 from app.modules.test_planning.repository import PlanningRepository
 from app.modules.test_planning.service import PlanningService
 
@@ -48,6 +49,7 @@ class ExecutionService:
 
     async def start(self, user: CurrentUserInfo, req: RunRequest) -> RunStarted:
         plan_id = req.resolved_plan_id
+        test_case_id = None
         config = req.run_config()
         if plan_id:
             plan = await self.planning.approve(user, plan_id)  # khoá plan; không phải của mình → 404
@@ -57,6 +59,11 @@ class ExecutionService:
                 # Runner thật (M4) cần test_data để User Simulator điền form; giữ trong config
                 # để Re-run dùng lại ĐÚNG dữ liệu này, không phụ thuộc plan lúc rerun có còn hay đã đổi.
                 config = {**config, "test_data": plan.test_data}
+        elif req.test_case_id:
+            test_case = await self._resolve_test_case(user.id, req.test_case_id)
+            steps = [(s["action"], s["selector"], s.get("expected", "")) for s in test_case.steps]
+            name = test_case.name
+            test_case_id = test_case.id
         elif req.steps:
             steps = [(s.action, s.selector, s.expected) for s in req.steps]
             name = req.name or req.prompt_text or "Ad-hoc test run"
@@ -68,7 +75,7 @@ class ExecutionService:
             raise InvalidInput("The test plan has no steps", code="PLAN_EMPTY")
 
         return await self._create_and_launch(
-            user, name=name, steps=steps, plan_id=plan_id, rerun_of=None,
+            user, name=name, steps=steps, plan_id=plan_id, test_case_id=test_case_id, rerun_of=None,
             environment_id=req.environment_id, config=config,
         )
 
@@ -77,19 +84,19 @@ class ExecutionService:
         old = await self._get(user, run_id)
         return await self._create_and_launch(
             user, name=old.name, steps=[(s.action, s.selector, s.expected) for s in old.steps],
-            plan_id=old.plan_id, rerun_of=old.id, environment_id=old.environment_id,
+            plan_id=old.plan_id, test_case_id=old.test_case_id, rerun_of=old.id, environment_id=old.environment_id,
             config={k: v for k, v in old.config.items() if k != "runner"},
         )
 
     async def _create_and_launch(
-        self, user, *, name, steps, plan_id, rerun_of, environment_id, config
+        self, user, *, name, steps, plan_id, test_case_id, rerun_of, environment_id, config
     ) -> RunStarted:
         env = await self._resolve_environment(user.id, environment_id)
         label = _BROWSER_LABELS.get(env.browser, "Chromium") if env else "Chromium"
         browser = f"Simulated {label}" if self.launcher.runner_name == "simulated" else label
         run = await self.repo.create_run(
             TestRun(
-                id=new_id("RUN"), owner_id=user.id, plan_id=plan_id, rerun_of=rerun_of,
+                id=new_id("RUN"), owner_id=user.id, plan_id=plan_id, test_case_id=test_case_id, rerun_of=rerun_of,
                 environment_id=environment_id, name=name[:200], suite=DEFAULT_SUITE,
                 environment_name=env.name if env else None,
                 browser=browser,
@@ -179,6 +186,12 @@ class ExecutionService:
             return None
         return await OwnedRepository(Environment, self.session).get(environment_id, owner_id)
 
+    async def _resolve_test_case(self, owner_id: str, test_case_id: str) -> TestCase:
+        test_case = await OwnedRepository(TestCase, self.session).get(test_case_id, owner_id)
+        if test_case is None:
+            raise NotFound("Test case not found", code="TEST_CASE_NOT_FOUND")
+        return test_case
+
     async def _get(self, user: CurrentUserInfo, run_id: str, *, lock: bool = False) -> TestRun:
         run = await self.repo.get_owned(run_id, user.id, lock=lock)
         if run is None:
@@ -214,6 +227,7 @@ def _run_out(run: TestRun, human_prompt: str | None) -> RunOut:
         name=run.name,
         runner=run.config.get("runner", "simulated"),
         plan_id=run.plan_id,
+        test_case_id=run.test_case_id,
         rerun_of=run.rerun_of,
         current_step=run.current_step,
         total_steps=len(run.steps),

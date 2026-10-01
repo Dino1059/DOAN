@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { NewTestPage } from './pages/NewTestPage';
 import { TestRunsPage, RunDetailModal } from './pages/TestRunsPage';
 import { EnvironmentsPage, SettingsPage, ReportsPage, ComparisonsPage } from './pages/ExtraModules';
+import { TestCasesPage } from './pages/TestCasesPage';
 import { InitialTestPlanData, FallbackPlanSteps } from './mockData';
 import {
   fetchRunHistory,
@@ -29,6 +30,7 @@ import {
   setUnauthorizedHandler,
   getPreferences,
   updatePreferences,
+  saveTestCaseFromPlan,
 } from './api';
 
 // Dashboard Workspace — navigation + state shared across modules (execution, runs, selected run)
@@ -241,6 +243,17 @@ const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme, onThemeChang
     updatePlanSteps(planTaskId, steps)
       .then(res => applyPlan(res.data))
       .catch(err => setPlanError(err.message || 'Unable to save plan changes.'));
+  };
+
+  const [testCaseNotice, setTestCaseNotice] = React.useState('');
+
+  // Save as Test Case: chép bước của plan hiện tại thành 1 test case độc lập (bản chụp, không đổi khi sửa plan sau này)
+  const handleSaveAsTestCase = () => {
+    if (!planTaskId) { setTestCaseNotice('Generate a plan first before saving it as a test case.'); return; }
+    setTestCaseNotice('Saving…');
+    saveTestCaseFromPlan(planTaskId)
+      .then(tc => setTestCaseNotice(`Saved as test case "${tc.name}" (${tc.id}).`))
+      .catch(err => setTestCaseNotice(err.message || 'Unable to save test case.'));
   };
 
   const handleConfirmAndRun = () => {
@@ -490,6 +503,8 @@ const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme, onThemeChang
             handlePauseTest={handlePauseTest}
             handleStopTest={handleStopTest}
             handleSendHumanInput={handleSendHumanInput}
+            onSaveAsTestCase={handleSaveAsTestCase}
+            testCaseNotice={testCaseNotice}
           />
         )}
 
@@ -503,6 +518,8 @@ const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme, onThemeChang
           />
         )}
 
+        {activeModule === 'test-cases' && <TestCasesPage isLight={isLight} setActiveModule={setActiveModule} />}
+
         {activeModule === 'environments' && <EnvironmentsPage isLight={isLight} />}
 
         {activeModule === 'settings' && <SettingsPage isLight={isLight} user={user} theme={theme} onThemeChange={onThemeChange} />}
@@ -511,7 +528,7 @@ const DashboardWorkspace = ({ user, onLogout, theme, onToggleTheme, onThemeChang
 
         {activeModule === 'comparisons' && <ComparisonsPage isLight={isLight} recentRuns={recentRuns} />}
 
-        {!['dashboard', 'new-test', 'test-runs', 'environments', 'settings', 'reports', 'comparisons'].includes(activeModule) && (
+        {!['dashboard', 'new-test', 'test-runs', 'test-cases', 'environments', 'settings', 'reports', 'comparisons'].includes(activeModule) && (
           <section className={`liquid-glass-strong rounded-[1.5rem] p-12 ${isLight ? 'border-slate-200' : 'border-white/10'} border text-center space-y-2`}>
             <div className={`text-xs font-mono ${isLight ? 'text-slate-500' : 'text-white/60'} uppercase tracking-wider`}>// Coming Soon</div>
             <h3 className={`font-heading text-2xl ${isLight ? 'text-slate-900' : 'text-white'}`}>This module is under construction</h3>

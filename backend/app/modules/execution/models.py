@@ -1,8 +1,4 @@
-"""Nhóm D — thực thi. DDL: BACKEND_STRUCTURE_PLAN.md mục 10.4, giải thích: DATABASE_TABLES.md bảng 11–13.
-
-Khoá ngoại tới bảng chưa tồn tại được thêm ở module sau:
-- test_case_id → test_cases (M10).
-"""
+"""Nhóm D — thực thi. DDL: BACKEND_STRUCTURE_PLAN.md mục 10.4, giải thích: DATABASE_TABLES.md bảng 11–13."""
 from datetime import datetime
 from typing import Any
 
@@ -38,7 +34,7 @@ class TestRun(CreatedAtMixin, Base):
     owner_id: Mapped[str] = mapped_column(Text, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     # 3 nguồn gốc, đều tuỳ chọn
     plan_id: Mapped[str | None] = mapped_column(Text, ForeignKey("test_plans.id", ondelete="SET NULL"))
-    test_case_id: Mapped[str | None] = mapped_column(Text)
+    test_case_id: Mapped[str | None] = mapped_column(Text, ForeignKey("test_cases.id", ondelete="SET NULL"))
     rerun_of: Mapped[str | None] = mapped_column(Text, ForeignKey("test_runs.id", ondelete="SET NULL"))
     environment_id: Mapped[str | None] = mapped_column(Text, ForeignKey("environments.id", ondelete="SET NULL"))
     # Bản chụp lúc chạy: đổi/xoá plan, môi trường sau này thì lịch sử vẫn đúng

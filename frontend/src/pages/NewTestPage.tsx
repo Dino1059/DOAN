@@ -70,7 +70,9 @@ export const NewTestPage = ({
   handleConfirmAndRun,
   handlePauseTest,
   handleStopTest,
-  handleSendHumanInput
+  handleSendHumanInput,
+  onSaveAsTestCase,
+  testCaseNotice
 }) => {
   const [isEditingPlan, setIsEditingPlan] = React.useState(false);
   const [isChatHistoryOpen, setIsChatHistoryOpen] = React.useState(false);
@@ -230,8 +232,9 @@ export const NewTestPage = ({
           <div className="flex gap-2 mb-3 flex-wrap">
             <button onClick={handleAddStep} disabled={isPlanLocked} title={isPlanLocked ? 'This plan has been run and is locked' : ''} className={`liquid-glass rounded-full px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isLight ? 'text-slate-700' : 'text-white/80'}`}>+ Add Step</button>
             <button onClick={handleGeneratePlan} disabled={isGenerating} className={`liquid-glass rounded-full px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40 ${isLight ? 'text-slate-700' : 'text-white/80'}`}>Run Again</button>
-            <button className={`liquid-glass rounded-full px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'text-slate-700' : 'text-white/80'}`}>Save as Test Case</button>
+            <button onClick={onSaveAsTestCase} className={`liquid-glass rounded-full px-3 py-1.5 text-xs cursor-pointer ${isLight ? 'text-slate-700' : 'text-white/80'}`}>Save as Test Case</button>
           </div>
+          {testCaseNotice && <div className={`text-xs mb-3 ${testCaseNotice.startsWith('Saved') ? 'text-emerald-600' : 'text-rose-500'}`}>{testCaseNotice}</div>}
           <div className="flex gap-2">
             <input
               value={promptText}

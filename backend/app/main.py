@@ -15,6 +15,7 @@ from app.modules.evidence.router import router as evidence_router
 from app.modules.execution.router import router as execution_router
 from app.modules.execution.router import run_launcher
 from app.modules.feedback.router import router as feedback_router
+from app.modules.test_cases.router import router as test_cases_router
 from app.modules.test_planning.router import router as test_planning_router
 from app.modules.test_runs.router import router as test_runs_router
 from app.modules.user_settings.router import router as user_settings_router
@@ -57,3 +58,4 @@ app.include_router(evidence_router)
 app.include_router(feedback_router)
 app.include_router(environments_router)
 app.include_router(user_settings_router)
+app.include_router(test_cases_router)

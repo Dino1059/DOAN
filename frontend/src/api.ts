@@ -131,6 +131,21 @@ export const getConversation = (conversationId) =>
 export const updateConversation = (conversationId, patch) =>
   sendJson('PATCH', `/conversations/${conversationId}`, patch);
 
+// Save as Test Case (M10): chép bước của plan hiện tại thành 1 test case độc lập (bản chụp).
+export const saveTestCaseFromPlan = (planId, { name, suite, tags } = {}) =>
+  sendJson('POST', `/test-cases/from-plan/${planId}`, { name, suite, tags }).then(body => body.data);
+
+export const listTestCases = (params = {}) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => { if (value) query.set(key, value); });
+  return apiFetch(`/test-cases?${query}`).then(jsonOrThrow).then(body => body.data);
+};
+
+export const deleteTestCase = (id) => apiFetch(`/test-cases/${id}`, { method: 'DELETE' }).then(jsonOrThrow);
+
+export const runTestCase = (id, environmentId) =>
+  sendJson('POST', `/test-cases/${id}/run`, { environment_id: environmentId || undefined }).then(body => body.data);
+
 // Lưu bước sau Edit Directly / + Add Step / xoá bước. Plan đã chạy (approved) → ApiError 409.
 export const updatePlanSteps = (planId, steps) =>
   sendJson('PUT', `/plans/${planId}/steps`, {
